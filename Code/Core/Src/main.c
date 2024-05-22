@@ -66,7 +66,7 @@ volatile uint8_t tbl_detection[] = {0, 0, 0, 0};
 volatile uint8_t start = 0;
 volatile unsigned int Vbatt = MAX_VBATT;
 
-typedef enum {BLANC, ALLUMER_LEDS, MESURES} etat;
+typedef enum {ETEINDRE_LEDS, BLANC, ALLUMER_LEDS, MESURES} etat;
 volatile etat etat_courant = BLANC;
 
 /* USER CODE END PV */
@@ -535,12 +535,17 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim == &htim6) {
 		//callback machine d'etat
 		switch (etat_courant) {
-			case BLANC:
+
+			case ETEINDRE_LEDS:
 				HAL_GPIO_WritePin(Cmde_led_IR1_GPIO_Port, Cmde_led_IR1_Pin, 0);
 				HAL_GPIO_WritePin(Cmde_led_IR2_GPIO_Port, Cmde_led_IR2_Pin, 0);
 				HAL_GPIO_WritePin(Cmde_led_IR3_GPIO_Port, Cmde_led_IR3_Pin, 0);
 				HAL_GPIO_WritePin(Cmde_led_IR4_GPIO_Port, Cmde_led_IR4_Pin, 0);
 
+				etat_courant = BLANC;
+
+
+			case BLANC:
 				flag_blanc = 1;
 				HAL_ADC_Start_IT(&hadc1);
 
@@ -564,13 +569,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 				flag_blanc = 0;
 				HAL_ADC_Start_IT(&hadc1);
 
-				etat_courant = BLANC;
+				etat_courant = ETEINDRE_LEDS;
 				break;
 
 
 
 			default:
-				etat_courant = BLANC;
+				etat_courant = ETEINDRE_LEDS;
 				break;
 		}
 	}
