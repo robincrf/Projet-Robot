@@ -1,8 +1,9 @@
 #define IR_TX 13
-#define IR_RX A0
+#define IR_RX A1
 
 volatile int blanc = 0;
 volatile int mesure = 0;
+volatile int ancienne_mesure = mesure - blanc;
 
 void setup() {
   // put your setup code here, to run once:
@@ -16,23 +17,25 @@ void setup() {
 
 void loop() {
   //blanc
-  digitalWrite(IR_TX, LOW);
-  delay(10);
-  
+  digitalWrite(IR_TX, LOW);  
+  delay(100);
   blanc = analogRead(IR_RX);
- 
-
-  delay(10);
+  // delay(10);
 
 
   //mesure
   digitalWrite(IR_TX, HIGH);
-  delay(10);
+  delay(100);
+  mesure = analogRead(IR_RX) - blanc;
+  // delay(10);
 
-  mesure = abs(analogRead(IR_RX) - blanc);
-  Serial.println(mesure);
+  Serial.println(mesure);// - ancienne_mesure);
+  ancienne_mesure = mesure;
+  // delay(500);
   
-  if (mesure >= 2) Serial.println("Franchissement");
+  // if (mesure < 15) Serial.println("Franchissement --------------------------------");
+  // if (mesure > 22) Serial.println("Franchissement ********************************");
+
 
   
 }

@@ -78,8 +78,8 @@ void Error_Handler(void);
 #define Cmde_led_IR2_GPIO_Port GPIOB
 #define Cmde_DirD_Pin GPIO_PIN_8
 #define Cmde_DirD_GPIO_Port GPIOC
-#define Cmde_ld_IR3_Pin GPIO_PIN_12
-#define Cmde_ld_IR3_GPIO_Port GPIOA
+#define Cmde_led_IR3_Pin GPIO_PIN_12
+#define Cmde_led_IR3_GPIO_Port GPIOA
 #define TMS_Pin GPIO_PIN_13
 #define TMS_GPIO_Port GPIOA
 #define TCK_Pin GPIO_PIN_14

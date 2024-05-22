@@ -18,10 +18,10 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "stdio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
 
 /* USER CODE END Includes */
 
@@ -40,7 +40,7 @@
 
 #define PWM_FW 80000 * 0.25
 
-#define SEUIL_IR 2
+#define SEUIL_IR 200
 
 /* USER CODE END PD */
 
@@ -62,6 +62,7 @@ volatile uint8_t mesures_IR = 0; //contient les quatres flags de detection des l
 volatile uint8_t nb_conv = 0; //nombre de conversions realisees dans le cycle de conversion de l'ADC
 volatile uint8_t flag_blanc = 0;
 volatile uint8_t blancs[] = {0, 0, 0, 0};
+volatile uint8_t tbl_detection[] = {0, 0, 0, 0};
 volatile uint8_t start = 0;
 volatile unsigned int Vbatt = MAX_VBATT;
 
@@ -74,9 +75,9 @@ volatile etat etat_courant = BLANC;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
-static void MX_ADC1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM6_Init(void);
+static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 void correction_trajectoire(void);
 
@@ -116,19 +117,19 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART2_UART_Init();
-  MX_ADC1_Init();
   MX_TIM2_Init();
   MX_TIM6_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim6); //demarrage scan des leds toutes les 10ms
 
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1); //demarrage pwm moteur Gauche
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4); //demarrage pwm moteur Droit
 
-  HAL_GPIO_WritePin(Cmde_DirD_GPIO_Port, Cmde_DirD_Pin, 0); // avancer ou reculer ?
-  HAL_GPIO_WritePin(Cmde_DirG_GPIO_Port, Cmde_DirG_Pin, 0);
-  PWM_MOTEUR_DROIT = 0; //arret moteur
-  PWM_MOTEUR_GAUCHE = 0;
+  HAL_GPIO_WritePin(Cmde_DirD_GPIO_Port, Cmde_DirD_Pin, 1); // avancer ou reculer ?
+  HAL_GPIO_WritePin(Cmde_DirG_GPIO_Port, Cmde_DirG_Pin, 1);
+  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 0); //arret moteur
+  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, 0);
 
   /* USER CODE END 2 */
 
@@ -138,8 +139,8 @@ int main(void)
   {
 	  while(!start) {
 		  // tant que l'on n'appuie pas sur le bouton de demarrage
-		  PWM_MOTEUR_DROIT = 0; //arret moteur
-		  PWM_MOTEUR_GAUCHE = 0;
+		  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 0); //arret moteur
+		  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, 0);
 	  }
 
 	  //surveillance batterie
@@ -152,9 +153,9 @@ int main(void)
 	  HAL_UART_Transmit(&huart2, (const uint8_t*)message, sizeof(message), HAL_MAX_DELAY);
 
 	  //avancer tout droit
-	  PWM_MOTEUR_DROIT = PWM_FW;
-	  PWM_MOTEUR_GAUCHE = PWM_FW;
-
+	  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, PWM_FW); //arret moteur
+	  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, PWM_FW);
+	  /*
 	  if (mesures_IR) {
 		  //arret moteurs
 		  PWM_MOTEUR_DROIT = 0;
@@ -166,6 +167,7 @@ int main(void)
 		  //remise a zéro des flags leds IR
 		  mesures_IR = 0;
 	  }
+	  */
 
     /* USER CODE END WHILE */
 
@@ -274,7 +276,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_12;
+  sConfig.Channel = ADC_CHANNEL_3;
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SamplingTime = ADC_SAMPLETIME_640CYCLES_5;
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
@@ -287,7 +289,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_13;
+  sConfig.Channel = ADC_CHANNEL_4;
   sConfig.Rank = ADC_REGULAR_RANK_2;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
@@ -296,7 +298,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_9;
+  sConfig.Channel = ADC_CHANNEL_16;
   sConfig.Rank = ADC_REGULAR_RANK_3;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
@@ -305,7 +307,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_14;
+  sConfig.Channel = ADC_CHANNEL_13;
   sConfig.Rank = ADC_REGULAR_RANK_4;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
@@ -314,7 +316,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_15;
+  sConfig.Channel = ADC_CHANNEL_14;
   sConfig.Rank = ADC_REGULAR_RANK_5;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
@@ -407,9 +409,9 @@ static void MX_TIM6_Init(void)
 
   /* USER CODE END TIM6_Init 1 */
   htim6.Instance = TIM6;
-  htim6.Init.Prescaler = 13-1;
+  htim6.Init.Prescaler = 37-1;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim6.Init.Period = 61538;
+  htim6.Init.Period = 64865;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
   {
@@ -480,7 +482,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, Alert_batt_Pin|Cmde_ld_IR3_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, Alert_batt_Pin|Cmde_led_IR3_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, Cmde_DirG_Pin|Cmde_led_IR1_Pin|Cmde_led_IR4_Pin|Cmde_led_IR2_Pin, GPIO_PIN_RESET);
@@ -494,8 +496,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(Start_btn_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : Alert_batt_Pin Cmde_ld_IR3_Pin */
-  GPIO_InitStruct.Pin = Alert_batt_Pin|Cmde_ld_IR3_Pin;
+  /*Configure GPIO pins : Alert_batt_Pin Cmde_led_IR3_Pin */
+  GPIO_InitStruct.Pin = Alert_batt_Pin|Cmde_led_IR3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -585,6 +587,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
 				blancs[nb_conv] = HAL_ADC_GetValue(&hadc1); //mesure du blanc
 			}
 			else {
+				tbl_detection[nb_conv] = HAL_ADC_GetValue(&hadc1) - blancs[nb_conv]; //debug
 				if ( (HAL_ADC_GetValue(&hadc1) - blancs[nb_conv]) > SEUIL_IR ) {
 					mesures_IR |= 1 << nb_conv; //activation du flag
 				}
@@ -607,7 +610,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
 // fonction de correction de trajectoire
 void correction_trajectoire(void) {
 	switch (mesures_IR) {
-		case value:
+		case 0b0001:
 
 			break;
 
