@@ -61,8 +61,8 @@ UART_HandleTypeDef huart2;
 volatile uint8_t mesures_IR = 0; //contient les quatres flags de detection des leds IR
 volatile uint8_t nb_conv = 0; //nombre de conversions realisees dans le cycle de conversion de l'ADC
 volatile uint8_t flag_blanc = 0;
-volatile uint8_t blancs[] = {0, 0, 0, 0};
-volatile uint8_t tbl_detection[] = {0, 0, 0, 0};
+volatile uint16_t blancs[] = {0, 0, 0, 0};
+volatile uint16_t tbl_detection[] = {0, 0, 0, 0};
 volatile uint8_t start = 0;
 volatile unsigned int Vbatt = MAX_VBATT;
 
@@ -543,6 +543,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 				HAL_GPIO_WritePin(Cmde_led_IR4_GPIO_Port, Cmde_led_IR4_Pin, 0);
 
 				etat_courant = BLANC;
+				break;
 
 
 			case BLANC:

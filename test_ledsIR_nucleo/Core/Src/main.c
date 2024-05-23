@@ -98,7 +98,7 @@ int main(void)
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_GPIO_WritePin(Cmde_led_IR1_GPIO_Port, Cmde_led_IR1_Pin, 0);
+  HAL_GPIO_WritePin(Cmde_led_IR3_GPIO_Port, Cmde_led_IR3_Pin, 1);
 
   /* USER CODE END 2 */
 
@@ -106,15 +106,19 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  HAL_GPIO_WritePin(Cmde_led_IR1_GPIO_Port, Cmde_led_IR1_Pin, 0);
+	  //HAL_GPIO_WritePin(Cmde_led_IR3_GPIO_Port, Cmde_led_IR3_Pin, 0);
 	  HAL_ADC_Start(&hadc1);
 	  HAL_Delay(100);
 	  blanc = HAL_ADC_GetValue(&hadc1);
 
-	  HAL_GPIO_WritePin(Cmde_led_IR1_GPIO_Port, Cmde_led_IR1_Pin, 1);
-	  HAL_ADC_Start(&hadc1);
-	  HAL_Delay(100);
-	  mesure = HAL_ADC_GetValue(&hadc1);
+
+
+	  //HAL_GPIO_WritePin(Cmde_led_IR3_GPIO_Port, Cmde_led_IR3_Pin, 1);
+	  //HAL_ADC_Start(&hadc1);
+	  //HAL_Delay(100);
+	  //mesure = HAL_ADC_GetValue(&hadc1);
+
+
 
 	  detection = blanc - mesure;
 
@@ -226,7 +230,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_3;
+  sConfig.Channel = ADC_CHANNEL_16;
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SamplingTime = ADC_SAMPLETIME_640CYCLES_5;
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
@@ -295,7 +299,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, LD2_Pin|Cmde_led_IR3_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(Cmde_led_IR1_GPIO_Port, Cmde_led_IR1_Pin, GPIO_PIN_RESET);
@@ -306,12 +310,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LD2_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin;
+  /*Configure GPIO pins : LD2_Pin Cmde_led_IR3_Pin */
+  GPIO_InitStruct.Pin = LD2_Pin|Cmde_led_IR3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : Cmde_led_IR1_Pin */
   GPIO_InitStruct.Pin = Cmde_led_IR1_Pin;
