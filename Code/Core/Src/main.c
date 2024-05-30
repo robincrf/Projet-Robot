@@ -35,10 +35,24 @@
 #define MAX_VBATT 4095 //valeur max sur ADC1 resolution de 12bits
 #define SEUIL_VBATT 2362 //3V
 
+#define PWM 20661 //10 cm/s  //80000 * 0.25
+
 #define PWM_MOTEUR_DROIT  TIM2->CCR4
 #define PWM_MOTEUR_GAUCHE TIM2->CCR1
 
-#define PWM_FW 80000 * 0.25
+#define SENS_MOTEUR_DROIT_AVANCE 	HAL_GPIO_WritePin(Cmde_DirD_GPIO_Port, Cmde_DirD_Pin, 1)
+#define SENS_MOTEUR_GAUCHE_AVANCE 	HAL_GPIO_WritePin(Cmde_DirG_GPIO_Port, Cmde_DirG_Pin, 1)
+
+#define SENS_MOTEUR_DROIT_RECULE 	HAL_GPIO_WritePin(Cmde_DirD_GPIO_Port, Cmde_DirD_Pin, 0)
+#define SENS_MOTEUR_GAUCHE_RECULE 	HAL_GPIO_WritePin(Cmde_DirG_GPIO_Port, Cmde_DirG_Pin, 0)
+
+#define DEMARRAGE_MOTEUR_DROIT 	TIM2->CCR4 = PWM
+#define DEMARRAGE_MOTEUR_GAUCHE	TIM2->CCR1 = PWM
+
+#define ARRET_MOTEUR_DROIT 		TIM2->CCR4 = 0
+#define ARRET_MOTEUR_GAUCHE 	TIM2->CCR1 = 0
+
+
 
 #define SEUIL_IR 200
 
@@ -61,8 +75,9 @@ UART_HandleTypeDef huart2;
 volatile uint8_t mesures_IR = 0; //contient les quatres flags de detection des leds IR
 volatile uint8_t nb_conv = 0; //nombre de conversions realisees dans le cycle de conversion de l'ADC
 volatile uint8_t flag_blanc = 0;
-volatile uint16_t blancs[] = {0, 0, 0, 0};
-volatile uint16_t tbl_detection[] = {0, 0, 0, 0};
+volatile int blancs[] = {0, 0, 0, 0};
+volatile int tbl_detection[] = {0, 0, 0, 0};
+volatile int seuils_detection[] = {2000, 3000, 3000, 3000};
 volatile uint8_t start = 0;
 volatile unsigned int Vbatt = MAX_VBATT;
 
@@ -94,6 +109,7 @@ void correction_trajectoire(void);
   */
 int main(void)
 {
+
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -128,8 +144,12 @@ int main(void)
 
   HAL_GPIO_WritePin(Cmde_DirD_GPIO_Port, Cmde_DirD_Pin, 1); // avancer ou reculer ?
   HAL_GPIO_WritePin(Cmde_DirG_GPIO_Port, Cmde_DirG_Pin, 1);
-  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 0); //arret moteur
-  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, 0);
+
+  SENS_MOTEUR_DROIT_AVANCE;
+  SENS_MOTEUR_GAUCHE_AVANCE;
+  ARRET_MOTEUR_DROIT;
+  ARRET_MOTEUR_GAUCHE;
+
 
   /* USER CODE END 2 */
 
@@ -137,10 +157,14 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+//	  HAL_GPIO_WritePin(Cmde_led_IR2_GPIO_Port, Cmde_led_IR2_Pin, 1);
+//	  while(1);
+
 	  while(!start) {
 		  // tant que l'on n'appuie pas sur le bouton de demarrage
-		  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 0); //arret moteur
-		  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, 0);
+		  ARRET_MOTEUR_DROIT;
+		  ARRET_MOTEUR_GAUCHE;
+
 	  }
 
 	  //surveillance batterie
@@ -153,21 +177,27 @@ int main(void)
 	  HAL_UART_Transmit(&huart2, (const uint8_t*)message, sizeof(message), HAL_MAX_DELAY);
 
 	  //avancer tout droit
-	  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, PWM_FW); //arret moteur
-	  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, PWM_FW);
-	  /*
+	  SENS_MOTEUR_DROIT_AVANCE;
+	  SENS_MOTEUR_GAUCHE_AVANCE;
+	  DEMARRAGE_MOTEUR_DROIT;
+	  DEMARRAGE_MOTEUR_GAUCHE;
+
+
 	  if (mesures_IR) {
 		  //arret moteurs
-		  PWM_MOTEUR_DROIT = 0;
-		  PWM_MOTEUR_GAUCHE = 0;
+		  ARRET_MOTEUR_DROIT;
+		  ARRET_MOTEUR_GAUCHE;
 
 		  //correction de trajectoire
-		  // correction_trajectoire();
+		  correction_trajectoire();
+		  // HAL_Delay(1000);
 
 		  //remise a zéro des flags leds IR
 		  mesures_IR = 0;
 	  }
-	  */
+
+//	  HAL_Delay(100);
+//	  mesures_IR = 0;
 
     /* USER CODE END WHILE */
 
@@ -594,7 +624,8 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
 			}
 			else {
 				tbl_detection[nb_conv] = HAL_ADC_GetValue(&hadc1) - blancs[nb_conv]; //debug
-				if ( (HAL_ADC_GetValue(&hadc1) - blancs[nb_conv]) > SEUIL_IR ) {
+
+				if ( (HAL_ADC_GetValue(&hadc1) - blancs[nb_conv]) < seuils_detection[nb_conv] ) {
 					mesures_IR |= 1 << nb_conv; //activation du flag
 				}
 			}
@@ -616,12 +647,41 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
 // fonction de correction de trajectoire
 void correction_trajectoire(void) {
 	switch (mesures_IR) {
-		case 0b0001:
+		case 0b1110:
+			// tourne a droite
+
+			SENS_MOTEUR_DROIT_RECULE;
+			SENS_MOTEUR_GAUCHE_AVANCE;
+
+			DEMARRAGE_MOTEUR_DROIT;
+			DEMARRAGE_MOTEUR_GAUCHE;
+
+			HAL_Delay(100);
+
+			ARRET_MOTEUR_DROIT;
+			ARRET_MOTEUR_GAUCHE;
+
+			break;
+
+		case 0b1101:
+			// tourne a gauche
+			SENS_MOTEUR_DROIT_AVANCE;
+			SENS_MOTEUR_GAUCHE_RECULE;
+
+			DEMARRAGE_MOTEUR_DROIT;
+			DEMARRAGE_MOTEUR_GAUCHE;
+
+			HAL_Delay(100);
+
+			ARRET_MOTEUR_DROIT;
+			ARRET_MOTEUR_GAUCHE;
 
 			break;
 
 
+
 		default:
+			//HAL_Delay(1000);
 			break;
 	}
 }

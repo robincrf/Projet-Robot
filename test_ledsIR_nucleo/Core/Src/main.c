@@ -98,7 +98,7 @@ int main(void)
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_GPIO_WritePin(Cmde_led_IR3_GPIO_Port, Cmde_led_IR3_Pin, 1);
+  HAL_GPIO_WritePin(Cmde_led_IR3_GPIO_Port, Cmde_led_IR3_Pin, 0);
 
   /* USER CODE END 2 */
 
@@ -106,17 +106,17 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  //HAL_GPIO_WritePin(Cmde_led_IR3_GPIO_Port, Cmde_led_IR3_Pin, 0);
+	  HAL_GPIO_WritePin(Cmde_led_IR3_GPIO_Port, Cmde_led_IR3_Pin, 0);
 	  HAL_ADC_Start(&hadc1);
-	  HAL_Delay(100);
+	  HAL_Delay(30);
 	  blanc = HAL_ADC_GetValue(&hadc1);
 
 
 
-	  //HAL_GPIO_WritePin(Cmde_led_IR3_GPIO_Port, Cmde_led_IR3_Pin, 1);
-	  //HAL_ADC_Start(&hadc1);
-	  //HAL_Delay(100);
-	  //mesure = HAL_ADC_GetValue(&hadc1);
+	  HAL_GPIO_WritePin(Cmde_led_IR3_GPIO_Port, Cmde_led_IR3_Pin, 1);
+	  HAL_ADC_Start(&hadc1);
+	  HAL_Delay(30);
+	  mesure = HAL_ADC_GetValue(&hadc1);
 
 
 
