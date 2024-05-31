@@ -77,7 +77,7 @@ volatile uint8_t nb_conv = 0; //nombre de conversions realisees dans le cycle de
 volatile uint8_t flag_blanc = 0;
 volatile int blancs[] = {0, 0, 0, 0};
 volatile int tbl_detection[] = {0, 0, 0, 0};
-volatile int seuils_detection[] = {2000, 3000, 3000, 3000};
+volatile int seuils_detection[] = {1000, 2700, 3000, 3000};
 volatile uint8_t start = 0;
 volatile unsigned int Vbatt = MAX_VBATT;
 
@@ -185,15 +185,14 @@ int main(void)
 
 	  if (mesures_IR) {
 		  //arret moteurs
-		  ARRET_MOTEUR_DROIT;
-		  ARRET_MOTEUR_GAUCHE;
 
 		  //correction de trajectoire
 		  correction_trajectoire();
-		  // HAL_Delay(1000);
+		  //HAL_Delay(100);
 
 		  //remise a zéro des flags leds IR
 		  mesures_IR = 0;
+
 	  }
 
 //	  HAL_Delay(100);
@@ -439,9 +438,9 @@ static void MX_TIM6_Init(void)
 
   /* USER CODE END TIM6_Init 1 */
   htim6.Instance = TIM6;
-  htim6.Init.Prescaler = 37-1;
+  htim6.Init.Prescaler = 13-1;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim6.Init.Period = 64865;
+  htim6.Init.Period = 61538;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
   {
@@ -648,6 +647,10 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
 void correction_trajectoire(void) {
 	switch (mesures_IR) {
 		case 0b1110:
+
+			ARRET_MOTEUR_DROIT;
+			ARRET_MOTEUR_GAUCHE;
+
 			// tourne a droite
 
 			SENS_MOTEUR_DROIT_RECULE;
@@ -656,14 +659,19 @@ void correction_trajectoire(void) {
 			DEMARRAGE_MOTEUR_DROIT;
 			DEMARRAGE_MOTEUR_GAUCHE;
 
-			HAL_Delay(100);
+			HAL_Delay(200);
 
 			ARRET_MOTEUR_DROIT;
 			ARRET_MOTEUR_GAUCHE;
 
+
+
 			break;
 
 		case 0b1101:
+			ARRET_MOTEUR_DROIT;
+			ARRET_MOTEUR_GAUCHE;
+
 			// tourne a gauche
 			SENS_MOTEUR_DROIT_AVANCE;
 			SENS_MOTEUR_GAUCHE_RECULE;
@@ -671,10 +679,11 @@ void correction_trajectoire(void) {
 			DEMARRAGE_MOTEUR_DROIT;
 			DEMARRAGE_MOTEUR_GAUCHE;
 
-			HAL_Delay(100);
+			HAL_Delay(200);
 
 			ARRET_MOTEUR_DROIT;
 			ARRET_MOTEUR_GAUCHE;
+
 
 			break;
 
