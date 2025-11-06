@@ -21,6 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
+#include <string.h>
 
 /* USER CODE END Includes */
 
@@ -72,6 +74,7 @@ static void MX_ADC1_Init(void);
   */
 int main(void)
 {
+
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -98,7 +101,7 @@ int main(void)
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_GPIO_WritePin(Cmde_led_IR3_GPIO_Port, Cmde_led_IR3_Pin, 0);
+  HAL_GPIO_WritePin(Cmde_led_IR1_GPIO_Port, Cmde_led_IR1_Pin, 0);
 
   /* USER CODE END 2 */
 
@@ -106,21 +109,28 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  HAL_GPIO_WritePin(Cmde_led_IR3_GPIO_Port, Cmde_led_IR3_Pin, 0);
+	  HAL_GPIO_WritePin(Cmde_led_IR1_GPIO_Port, Cmde_led_IR1_Pin, 0);
 	  HAL_ADC_Start(&hadc1);
-	  HAL_Delay(30);
+	  HAL_Delay(100);
 	  blanc = HAL_ADC_GetValue(&hadc1);
 
+	  HAL_Delay(50);
 
-
-	  HAL_GPIO_WritePin(Cmde_led_IR3_GPIO_Port, Cmde_led_IR3_Pin, 1);
+	  HAL_GPIO_WritePin(Cmde_led_IR1_GPIO_Port, Cmde_led_IR1_Pin, 1);
 	  HAL_ADC_Start(&hadc1);
-	  HAL_Delay(30);
+	  HAL_Delay(100);
 	  mesure = HAL_ADC_GetValue(&hadc1);
+	  detection = mesure - blanc;
 
 
+	  char buffer[64];
+	     int len = sprintf(buffer, "Blanc : %d, Mesure : %d, Detection %d \n", blanc, mesure, detection);
 
-	  detection = blanc - mesure;
+	     // Envoyer par UART2
+	     HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
+
+	     // Attente pour lisibilité dans le terminal
+	     HAL_Delay(200);
 
 
     /* USER CODE END WHILE */
@@ -202,7 +212,7 @@ static void MX_ADC1_Init(void)
   */
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
-  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc1.Init.Resolution = ADC_RESOLUTION_8B;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
@@ -230,7 +240,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_16;
+  sConfig.Channel = ADC_CHANNEL_3;
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SamplingTime = ADC_SAMPLETIME_640CYCLES_5;
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
@@ -289,8 +299,8 @@ static void MX_USART2_UART_Init(void)
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-/* USER CODE BEGIN MX_GPIO_Init_1 */
-/* USER CODE END MX_GPIO_Init_1 */
+  /* USER CODE BEGIN MX_GPIO_Init_1 */
+  /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
@@ -302,7 +312,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOA, LD2_Pin|Cmde_led_IR3_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(Cmde_led_IR1_GPIO_Port, Cmde_led_IR1_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, Cmde_led_IR1_Pin|Cmde_led_IR2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -317,15 +327,15 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : Cmde_led_IR1_Pin */
-  GPIO_InitStruct.Pin = Cmde_led_IR1_Pin;
+  /*Configure GPIO pins : Cmde_led_IR1_Pin Cmde_led_IR2_Pin */
+  GPIO_InitStruct.Pin = Cmde_led_IR1_Pin|Cmde_led_IR2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(Cmde_led_IR1_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-/* USER CODE BEGIN MX_GPIO_Init_2 */
-/* USER CODE END MX_GPIO_Init_2 */
+  /* USER CODE BEGIN MX_GPIO_Init_2 */
+  /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */

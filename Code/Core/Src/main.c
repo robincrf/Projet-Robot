@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include <string.h>
 
 /* USER CODE END Includes */
 
@@ -32,8 +33,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MAX_VBATT 4095 //valeur max sur ADC1 resolution de 12bits
-#define SEUIL_VBATT 2362 //3V
+#define MAX_VBATT 255 //valeur max sur ADC1 resolution de 12bits
+#define SEUIL_VBATT 232 //3V
 
 #define PWM 20661 //10 cm/s  //80000 * 0.25
 
@@ -52,6 +53,16 @@
 #define ARRET_MOTEUR_DROIT 		TIM2->CCR4 = 0
 #define ARRET_MOTEUR_GAUCHE 	TIM2->CCR1 = 0
 
+// Coefficient asservissement
+
+#define KP 1.5f
+#define KI 0.4f
+#define KD 0.2f
+#define CONSIGNE_D 300
+#define CONSIGNE_G 300
+#define PWM_MAX 20661
+#define PWM_MIN 0
+
 
 
 #define SEUIL_IR 200
@@ -65,8 +76,11 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+DMA_HandleTypeDef hdma_adc1;
 
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim6;
 
 UART_HandleTypeDef huart2;
@@ -75,26 +89,49 @@ UART_HandleTypeDef huart2;
 volatile uint8_t mesures_IR = 0; //contient les quatres flags de detection des leds IR
 volatile uint8_t nb_conv = 0; //nombre de conversions realisees dans le cycle de conversion de l'ADC
 volatile uint8_t flag_blanc = 0;
-volatile int blancs[] = {0, 0, 0, 0};
-volatile int tbl_detection[] = {0, 0, 0, 0};
-volatile int seuils_detection[] = {1000, 2700, 3000, 3000};
+volatile uint8_t mesure = 0;
+volatile uint8_t init = 1;
+volatile int blancs[] = {0, 0};
+volatile int tbl_detection[] = {0, 0};
+volatile int seuils_detection[] = {40, -30};
 volatile uint8_t start = 0;
 volatile unsigned int Vbatt = MAX_VBATT;
 
 typedef enum {ETEINDRE_LEDS, BLANC, ALLUMER_LEDS, MESURES} etat;
 volatile etat etat_courant = BLANC;
 
+
+extern TIM_HandleTypeDef htim1;   // Timer de commande moteur (PWM)
+
+// asservissement
+
+//static float somme_erreurs = 0;
+//static float erreur_precedente = 0;
+
+// DMA
+#define NB_ADC_CHANNELS 3
+#define CH_IR1 0 // led gauche
+#define CH_IR2 1 // led droite
+#define CH_VBATT 2 // batterie
+
+uint32_t adc_buffer[NB_ADC_CHANNELS];
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_TIM3_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 void correction_trajectoire(void);
+//void read_speed(void);
+//void asservissement_PID(void);
 
 /* USER CODE END PFP */
 
@@ -132,10 +169,13 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_USART2_UART_Init();
   MX_TIM2_Init();
   MX_TIM6_Init();
   MX_ADC1_Init();
+  MX_TIM3_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim6); //demarrage scan des leds toutes les 10ms
 
@@ -159,6 +199,8 @@ int main(void)
   {
 //	  HAL_GPIO_WritePin(Cmde_led_IR2_GPIO_Port, Cmde_led_IR2_Pin, 1);
 //	  while(1);
+//	  read_speed();
+//	  HAL_Delay(100);
 
 	  while(!start) {
 		  // tant que l'on n'appuie pas sur le bouton de demarrage
@@ -167,14 +209,11 @@ int main(void)
 
 	  }
 
-	  //surveillance batterie
-	  if (Vbatt < SEUIL_VBATT) HAL_GPIO_WritePin(Alert_batt_GPIO_Port, Alert_batt_Pin, 1);
-	  else HAL_GPIO_WritePin(Alert_batt_GPIO_Port, Alert_batt_Pin, 0);
 
 	  //affichage batterie en console
-	  char message[10];
-	  sprintf(message, "%d\n", Vbatt);
-	  HAL_UART_Transmit(&huart2, (const uint8_t*)message, sizeof(message), HAL_MAX_DELAY);
+//	  char message[30];
+//	  sprintf(message, "Tension de la batterie %d\n", Vbatt);
+//	  HAL_UART_Transmit(&huart2, (const uint8_t*)message, sizeof(message), HAL_MAX_DELAY);
 
 	  //avancer tout droit
 	  SENS_MOTEUR_DROIT_AVANCE;
@@ -194,6 +233,7 @@ int main(void)
 		  mesures_IR = 0;
 
 	  }
+
 
 //	  HAL_Delay(100);
 //	  mesures_IR = 0;
@@ -267,6 +307,7 @@ static void MX_ADC1_Init(void)
   /* USER CODE END ADC1_Init 0 */
 
   ADC_MultiModeTypeDef multimode = {0};
+  ADC_AnalogWDGConfTypeDef AnalogWDGConfig = {0};
   ADC_ChannelConfTypeDef sConfig = {0};
 
   /* USER CODE BEGIN ADC1_Init 1 */
@@ -277,13 +318,13 @@ static void MX_ADC1_Init(void)
   */
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
-  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc1.Init.Resolution = ADC_RESOLUTION_8B;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc1.Init.ScanConvMode = ADC_SCAN_ENABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc1.Init.LowPowerAutoWait = DISABLE;
   hadc1.Init.ContinuousConvMode = DISABLE;
-  hadc1.Init.NbrOfConversion = 5;
+  hadc1.Init.NbrOfConversion = 3;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
@@ -299,6 +340,19 @@ static void MX_ADC1_Init(void)
   */
   multimode.Mode = ADC_MODE_INDEPENDENT;
   if (HAL_ADCEx_MultiModeConfigChannel(&hadc1, &multimode) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analog WatchDog 1
+  */
+  AnalogWDGConfig.WatchdogNumber = ADC_ANALOGWATCHDOG_1;
+  AnalogWDGConfig.WatchdogMode = ADC_ANALOGWATCHDOG_SINGLE_REG;
+  AnalogWDGConfig.Channel = ADC_CHANNEL_3;
+  AnalogWDGConfig.ITMode = ENABLE;
+  AnalogWDGConfig.HighThreshold = 255;
+  AnalogWDGConfig.LowThreshold = 232;
+  if (HAL_ADC_AnalogWDGConfig(&hadc1, &AnalogWDGConfig) != HAL_OK)
   {
     Error_Handler();
   }
@@ -327,26 +381,8 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_16;
-  sConfig.Rank = ADC_REGULAR_RANK_3;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Regular Channel
-  */
-  sConfig.Channel = ADC_CHANNEL_13;
-  sConfig.Rank = ADC_REGULAR_RANK_4;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Regular Channel
-  */
   sConfig.Channel = ADC_CHANNEL_14;
-  sConfig.Rank = ADC_REGULAR_RANK_5;
+  sConfig.Rank = ADC_REGULAR_RANK_3;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -417,6 +453,104 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 2 */
   HAL_TIM_MspPostInit(&htim2);
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 0;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 65535;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI1;
+  sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC1Filter = 0;
+  sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC2Filter = 0;
+  if (HAL_TIM_Encoder_Init(&htim3, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 0;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 65535;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI1;
+  sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC1Filter = 0;
+  sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC2Filter = 0;
+  if (HAL_TIM_Encoder_Init(&htim4, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
 
 }
 
@@ -494,6 +628,22 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -555,9 +705,23 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-	if (GPIO_Pin == Start_btn_Pin) start ^= 1; //depart arret du robot
+
+// Fonction boutton anti-rebond
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    static uint32_t dernier_appui = 0;
+
+    if (GPIO_Pin == Start_btn_Pin)
+    {
+        // Anti-rebond logiciel : 200 ms de délai minimum
+        if (HAL_GetTick() - dernier_appui > 200)
+        {
+            start ^= 1;  // inverse le flag start
+            dernier_appui = HAL_GetTick(); // met à jour le moment de l'appui
+        }
+    }
 }
+
 
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
@@ -568,39 +732,33 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 			case ETEINDRE_LEDS:
 				HAL_GPIO_WritePin(Cmde_led_IR1_GPIO_Port, Cmde_led_IR1_Pin, 0);
 				HAL_GPIO_WritePin(Cmde_led_IR2_GPIO_Port, Cmde_led_IR2_Pin, 0);
-				HAL_GPIO_WritePin(Cmde_led_IR3_GPIO_Port, Cmde_led_IR3_Pin, 0);
-				HAL_GPIO_WritePin(Cmde_led_IR4_GPIO_Port, Cmde_led_IR4_Pin, 0);
 
 				etat_courant = BLANC;
 				break;
 
 
 			case BLANC:
-				flag_blanc = 1;
-				HAL_ADC_Start_IT(&hadc1);
-
-				etat_courant = ALLUMER_LEDS;
-				break;
+			    flag_blanc = 1;
+			    HAL_ADC_Start_DMA(&hadc1, adc_buffer, NB_ADC_CHANNELS);
+			    etat_courant = ALLUMER_LEDS;
+			    break;
 
 
 
 			case ALLUMER_LEDS:
 				HAL_GPIO_WritePin(Cmde_led_IR1_GPIO_Port, Cmde_led_IR1_Pin, 1);
 				HAL_GPIO_WritePin(Cmde_led_IR2_GPIO_Port, Cmde_led_IR2_Pin, 1);
-				HAL_GPIO_WritePin(Cmde_led_IR3_GPIO_Port, Cmde_led_IR3_Pin, 1);
-				HAL_GPIO_WritePin(Cmde_led_IR4_GPIO_Port, Cmde_led_IR4_Pin, 1);
-
+				// laisser le temps de s'allumer
 				etat_courant = MESURES;
 				break;
 
 
 
 			case MESURES:
-				flag_blanc = 0;
-				HAL_ADC_Start_IT(&hadc1);
-
-				etat_courant = ETEINDRE_LEDS;
-				break;
+			    flag_blanc = 0;
+			    HAL_ADC_Start_DMA(&hadc1, adc_buffer, NB_ADC_CHANNELS);
+			    etat_courant = ETEINDRE_LEDS;
+			    break;
 
 
 
@@ -614,39 +772,42 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
 
 //gestion des mesures
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc) {
-	if (hadc == &hadc1) {
-		if (nb_conv < 4) {
-			// scans des leds IR
-			if (flag_blanc) {
-				blancs[nb_conv] = HAL_ADC_GetValue(&hadc1); //mesure du blanc
-			}
-			else {
-				tbl_detection[nb_conv] = HAL_ADC_GetValue(&hadc1) - blancs[nb_conv]; //debug
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
+{
+    if (hadc == &hadc1)
+    {
+    	for (int i = 0; i < 2; i++)
+    	{
+    	    uint8_t adc_val = (uint8_t)adc_buffer[i]; // cast clair à 8 bits
 
-				if ( (HAL_ADC_GetValue(&hadc1) - blancs[nb_conv]) < seuils_detection[nb_conv] ) {
-					mesures_IR |= 1 << nb_conv; //activation du flag
-				}
-			}
+    	    if (flag_blanc) {
+    	        blancs[i] = adc_val;
+    	    } else {
+    	        int diff = (int)adc_val - blancs[i];
+    	        tbl_detection[i] = diff;
 
+    	        char buffer[64];
+    	        int len = sprintf(buffer, "LED num %d, Blanc : %d, Mesure : %d, Detection %d\n",
+    	                          i,blancs[i], adc_val, diff);
+    	        HAL_UART_Transmit(&huart2, (uint8_t*)buffer, len, HAL_MAX_DELAY);
 
-			nb_conv++;
-		}
+    	        if (diff > seuils_detection[i]) {
+    	            mesures_IR |= 1 << i;
+    	        }
+    	    }
+    	}
 
-		else {
-			//scan de la batterie
-			Vbatt = HAL_ADC_GetValue(&hadc1);
-			nb_conv = 0;
-		}
-	}
+    }
 }
+
+
 
 
 
 // fonction de correction de trajectoire
 void correction_trajectoire(void) {
 	switch (mesures_IR) {
-		case 0b1110:
+		case 0b00000010:
 
 			ARRET_MOTEUR_DROIT;
 			ARRET_MOTEUR_GAUCHE;
@@ -668,7 +829,7 @@ void correction_trajectoire(void) {
 
 			break;
 
-		case 0b1101:
+		case 0b00000001:
 			ARRET_MOTEUR_DROIT;
 			ARRET_MOTEUR_GAUCHE;
 
@@ -694,6 +855,58 @@ void correction_trajectoire(void) {
 			break;
 	}
 }
+
+//void read_speed(void) {
+//    static int32_t last_encoder_count_d = 0;
+//    static int32_t last_encoder_count_g = 0;
+//    char buffer[80];
+//    int32_t current_d = __HAL_TIM_GET_COUNTER(&htim3);
+//    int32_t current_g = __HAL_TIM_GET_COUNTER(&htim4);
+//
+//    *speed_d = current_d - last_encoder_count_d;
+//    *speed_g = current_g - last_encoder_count_g;
+//
+//
+//    // overflow
+//
+//    if (*speed_d > 32767) *speed_d -= 65536;
+//    if (*speed_d < -32768) *speed_d += 65536;
+//    if (*speed_g > 32767) *speed_g -= 65536;
+//    if (*speed_g < -32768) *speed_g += 65536;
+//
+//    last_encoder_count_d = current_d;
+//    last_encoder_count_g = current_g;
+//
+//    // Transmission UART
+//    sprintf(buffer, "Speed moteur droit : %ld\r\n, Speed moteur gauche : %ld\r\n", speed_d, speed_g);
+//    HAL_UART_Transmit(&huart2, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+//}
+//
+//
+//void asservissement_double_PID(void) {
+//    int32_t speed_d, speed_g;
+//    read_speed(&speed_d, &speed_g);  // récupère les vitesses des 2 moteurs
+//
+//    // --- Moteur droit ---
+//    float erreur_d = CONSIGNE_D - speed_d;
+//    erreur_i_d += erreur_d;
+//    float delta_e_d = erreur_d - erreur_precedente_d;
+//    float cmd_d = KP * erreur_d + KI * erreur_i_d + KD * delta_e_d;
+//    if (cmd_d > PWM_MAX) cmd_d = PWM_MAX;
+//    if (cmd_d < PWM_MIN) cmd_d = PWM_MIN;
+//    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, (uint32_t)cmd_d);
+//    erreur_precedente_d = erreur_d;
+//
+//    // --- Moteur gauche ---
+//    float erreur_g = CONSIGNE_G - speed_g;
+//    erreur_i_g += erreur_g;
+//    float delta_e_g = erreur_g - erreur_precedente_g;
+//    float cmd_g = KP * erreur_g + KI * erreur_i_g + KD * delta_e_g;
+//    if (cmd_g > PWM_MAX) cmd_g = PWM_MAX;
+//    if (cmd_g < PWM_MIN) cmd_g = PWM_MIN;
+//    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, (uint32_t)cmd_g);
+//    erreur_precedente_g = erreur_g;
+//}
 
 /* USER CODE END 4 */
 
